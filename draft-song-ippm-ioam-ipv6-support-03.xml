@@ -1,0 +1,356 @@
+<?xml version="1.0" encoding="US-ASCII"?>
+<!DOCTYPE rfc SYSTEM "rfc2629.dtd">
+<?rfc toc="yes"?>
+<?rfc tocompact="yes"?>
+<?rfc tocdepth="3"?>
+<?rfc tocindent="yes"?>
+<?rfc symrefs="yes"?>
+<?rfc sortrefs="yes"?>
+<?rfc comments="yes"?>
+<?rfc inline="yes"?>
+<?rfc compact="yes"?>
+<?rfc subcompact="no"?>
+<rfc category="std" docName="draft-song-ippm-ioam-ipv6-support-03" ipr="trust200902">
+  <front>
+    <title abbrev="IOAM IPv6 Support">Scalable Approaches on Supporting IOAM in IPv6</title>
+
+    <author fullname="Haoyu Song" initials="H." surname="Song">
+      <organization>Futurewei</organization>
+      <address>
+        <postal>
+          <street></street>
+          <city></city>
+          <code></code>
+          <country>USA</country>
+        </postal>
+        <email>haoyu.song@futurewei.com</email>
+      </address>
+    </author>
+
+    <author fullname="Zhenbin Li" initials="Z. " surname="Li">
+      <organization>Huawei Technologies</organization>
+      <address>
+        <postal>
+          <street></street>
+          <city></city>
+          <code></code>
+          <country>China</country>
+        </postal>
+        <email>lizhenbin@huawei.com</email>
+      </address>
+    </author>
+
+    <author fullname="Shuping Peng" initials="S. " surname="Peng">
+      <organization>Huawei Technologies</organization>
+      <address>
+        <postal>
+          <street></street>
+          <city></city>
+          <code></code>
+          <country>China</country>
+        </postal>
+        <email>pengshuping@huawei.com</email>
+      </address>
+    </author>
+
+	<author fullname="James Guichard" initials="J. " surname="Guichard">
+      <organization>Futurewei</organization>
+      <address>
+        <postal>
+          <street></street>
+          <city></city>
+          <code></code>
+          <country>USA</country>
+        </postal>
+        <email>james.n.guichard@futurewei.com</email>
+      </address>
+    </author>
+	
+	<area>OPS</area>
+
+    <workgroup>IPPM</workgroup>
+
+    <abstract>
+      <t>IOAM pre-allocated trace option data fields can be encapsulated in IPv6 HbH options header as described in RFC9486. 
+      However, due to the potential large size of the trace data and the HbH extension header location in the IPv6 packets, 
+	  the scheme creates practical challenges for implementation, especially when other extension headers,
+	  such as a routing header, also exist and require in-network processing. 
+	  We propose several alternative approaches to address this challenge, including  
+	  separating the IOAM incremental trace data from the IOAM instruction header, using the postcard-based telemetry (e.g., IOAM DEX),
+	  and applying the segment IOAM trace data export scheme, based on the network scenario and application requirements.
+	  We discuss the pros and cons of each approach in this document. </t> 
+	  
+    </abstract>
+
+    <note title="Requirements Language">
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+      "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+      document are to be interpreted as described in <xref
+      target="RFC2119">RFC 2119</xref>.</t>
+    </note>
+  </front>
+
+  <middle>
+    <section title="Introduction">
+      <t>In-situ OAM (IOAM) <xref target="RFC9197"/> defines two trace options, pre-allocated trace option and incremental trace option,
+	  which record hop-by-hop data along a packet's forwarding path. 
+	  <xref target="RFC9486"/> describes the method to encapsulate IOAM pre-allocated trace option data fields 
+      in IPv6. Because the trace options requires per hop processing, such options can only be encapsulated in IPv6 Hop-by-Hop (HbH)
+      options header.</t>
+
+	  <t><xref target="RFC8200"/> mandates that the HbH options header, if exists, must be the first extension header following the IPv6 header.
+      However, the IOAM trace data can be large, which can amount to tens to hundreds of bytes, making accessing other headers after it difficult
+	  or even impossible in some routers.
+      There are practical limitations on how far the hardware can reach into a packet in forwarding hardware. The IOAM trace option cannot 
+	  be applied if it makes other extension headers inaccessible. Even if the other headers can be
+      reached, the deeper they are, the higher the cost to access and process them, and the lower the forwarding performance.	  
+      A potentially more detrimental issue is that the incremental trace option will expand the HbH header at each hop and push back all other headers, 
+	  which keeps shifting the locations of the other extension headers, further complicating the hardware implementation and impeding the forwarding. For this reason  <xref target="RFC9486"/> does not describe the support of it at all.</t>
+
+      <t>The issue becomes more severe when SRv6 and IOAM coexist. The Segment Routing Extension Header (SRH) <xref
+      target="RFC8754"/> is encapsulated in a routing header which is after the HbH options header.
+      SRH itself can be large. It requires read and write operations at each SRv6 segment endpoint node. If it is deeply embedded in a packet 
+	  and its location keeps shifting, either it is beyond the reach of hardware or the forwarding performance degrades.</t>
+
+      <t>We can avoid the problem by not using both at the same time, but this is not ideal, because IOAM is an important OAM tool and it is
+      even more wanted when SRv6 brings more operational complexity into IPv6 networks.</t>
+
+      <t>The second recourse is to limit the IOAM to SRv6 nodes only. That is, consider SRv6 as an overlay tunnel over IPv6 and apply the IOAM pipe mode as discussed in
+	  <xref target="I-D.song-ippm-ioam-tunnel-mode" />, which only collects data at each SRv6 segment endpoint nodes. To realize this, <xref target="I-D.ali-spring-ioam-srv6" /> describes 
+	  an approach that encapsulates the IOAM option data fields in an SRH TLV.
+	  <xref target="RFC9259"/> describes another approach to enable 
+      postcard-based telemetry for SRv6 without needing IOAM option encapsulation. 
+	  In either case, the SRH is close to the packet front and its location is fixed.  
+	  While these approaches are useful for use cases that only need to monitor the segment endpoints, it fails to cover all the IPv6 nodes on the packet forwarding path in an IOAM domain.</t>   	  
+
+      <t>So the proposition of this draft is, if we need to apply IOAM on all nodes in an SRv6 network, how we can amend the approach in
+	  <xref target="RFC9486"/> or use alternative approaches to circumvent the aforementioned issues. In this draft, we 
+	  propose three viable approaches:  
+	  (1) separating the IOAM trace data from the instruction header to a different extension header option after the routing header if it exists, (2) using the postcard-based telemetry (e.g., IOAM DEX) instead,
+	  and (3) applying the segment IOAM trace export scheme. 
+	  We discuss the pros and cons of each approach. </t>
+   	  
+    </section>
+
+    <section title="IOAM Trace Data Separate and Postpose">
+      <t>An IOAM trace type data fields contain two parts: instruction and trace data. Although by convention the trace data part immediately follows 
+      the instruction part, there is not fundamental reason why these two parts must stick together. This observation provides us an optimization 
+	  opportunity to amend the original proposal in <xref target="RFC9486"/>. </t>
+
+  	  <t>We separate the IOAM trace type data fields into the instruction part and the trace data part. We encapsulate only the instruction part in the 
+	  HbH options header, and encapsulate the trace data part in another extension header option after all the IPv6 extension headers that need to be examined and processed on the packet forwarding path (e.g., a routing header).
+	  This arrangement allows us to use the incremental trace option efficiently. Even if the data trace increases its size at
+      each node, all IPv6 extension headers before it remain a fixed size, and new data is guaranteed to be inserted at a fixed location.</t>
+
+      <t>Figure 1 shows the HbH option format for IOAM incremental trace type instruction. The field specification is identical to that in <xref target="RFC8200" /> and <xref target="RFC9197"/>. </t>
+	  
+        <t><figure anchor="figure_1" title="HbH Option Format for IOAM Incremental Trace Type Instruction">
+            <artwork><![CDATA[	  
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Option Type  |  Opt Data Len |   Reserved    |   IOAM Type   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+<---
+|        Namespace-ID           |NodeLen  | Flags | RemainingLen| IOAM 
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ Trace 
+|               IOAM-Trace-Type                 |  Reserved     | Type
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+<Inst.                                                                 
+        ]]></artwork>
+          </figure></t>
+	  
+	<t>Figure 2 shows the TLV option format for IOAM trace type data. The IOAM trace type data format is compliant with <xref target="RFC9197" />.</t>  
+	  
+	  <t><figure anchor="figure_2" title="Option Format for IOAM Incremental Trace Type Data">
+            <artwork><![CDATA[	 
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   IOAM Type   |     Length    |            Reserved           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
+~                      IOAM Trace Type Data                     ~
+~                                                               ~ 
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+	
+]]></artwork>
+          </figure></t>
+	
+	  <section title="IOAM Incremental Trace Data Encapsulation">
+	    <t>We have basically two methods to encapsulate the IOAM incremental trace data. First, we can define a new IPv6 extension header which is dedicated 
+           to metadata. Once standardized, this extension header can also be used to host potential metadata from other applications such as NSH for SFC
+           <xref target="RFC8300" />. Second, this option can be carried as a TLV option in another existing extension header such as the Destination Option Header (DOH).
+		   The only requirement is that this extension header should be the last one in the extension header chain. 
+           The first method is cleaner but it requires to standardize a new extension header type; the second method is simpler but it needs to overcome the access constraints exerted by <xref target="RFC8200"/>.</t>		   
+	  </section>	
+	</section>
+		  
+	<section title="Segment IOAM Data Export">
+	   <t>If the overhead of the IOAM trace type data fields is under control, we may still manage to 
+        encapsulate both instruction and data in HbH options header as described in <xref target="RFC9486"/>. To this end, we introduce
+        two sub-approaches.</t>		
+		
+	   <section title="Independent of SRv6">
+	      <t><xref target="I-D.song-ippm-segment-ioam"/> proposes an enhancement to IOAM trace type which can configure the allowable overhead of the IOAM
+          trace type data fields. Once the trace data size is up to the limit at a network node (i.e., a segment or a fixed number of network nodes are 
+		  traversed), the trace data will be stripped and exported 
+		  so room is made to accommodate new trace data from nodes in the next segment of the forwarding path.</t>   		  
+
+          <t>This approach requires some moderate updates to the IOAM trace type data fields, as described in <xref target="I-D.song-ippm-segment-ioam"/>.
+		  Figure 3 shows the format of the HbH Option Header containing Segment IOAM trace type data fields. A flag bit (#23) in
+          the Flags field is used to indicate the current header is a segment
+          IOAM header.  In this context, the last octet in the IOAM header is
+          partitioned into two 4-bit nibbles.  The first nibble (SSize) is used
+          to save the segment size and the second nibble (RHop) is used to save
+          the remaining hops. This limits the maximum segment size to 15.
+		  </t>	
+
+ <t><figure anchor="figure_3" title="HbH Option Format for Segment IOAM Trace Type Data Fields">
+            <artwork><![CDATA[	 
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Option Type  |  Opt Data Len |   Reserved    |   IOAM Type   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+<------+
+|       Namespace-ID            |NodeLen|Flags|1| SSize | RHop  | IOAM 
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ Segment
+|               IOAM-Trace-Type                 |  Reserved     | Trace
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ Type
+|                                                               | Data 
+|                  Node Data List []                            | Fields
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+<------+
+]]></artwork>
+          </figure></t>
+
+    <t> At the beginning of each segment, the
+   segment size (SSize) and the remaining hops (RHop) are initialized: RHop is set to equal to SSize.  At each
+   hop, if RHop is not zero, the node data is added to the node data list
+   and then RHop is decremented by 1.  If RHop
+   is equal to 0 when receiving the packet, the node needs to remove (in
+   incremental trace option) or clear (in pre-allocated trace option)
+   the IOAM node data list and reset RHop to SSize.</t> 
+   
+   <t>In this case, if we use the IOAM pre-allocated trace type, the size and location of each IPv6 extension header is fixed and predictable, 
+		  and the hardware capability and performance can be guaranteed.</t>
+		  
+	   </section>
+	   
+	   <section title="Export at SRv6 node">
+	      <t>Whenever a packet with the IOAM option reaches a SRv6 segment endpoint node which needs to access the SRH, we can configure the node to export immediately the
+          IOAM trace data accumulated so far. In this case, basically at each SRv6 segment endpoint node, after the trace data export, the HbH header size is fixed and the header contains an IOAM option with only
+          the instruction part. After the SRH processing, this node can add local IOAM trace data in the HbH option header before forwarding the packet.</t>
+
+          <t>The incremental trace type is more proper in this approach than the pre-allocated trace type, due to the uncertainty of the number of hops between two segment endpoints. In an extreme case when every node is also an SRv6 node, this approach regresses to a 
+		  per-hop postcard-based telemetry approach such as IOAM DEX as described in <xref target="RFC9326" />.</t>   		  	   
+       </section>			
+	</section>
+		  
+	<section title="Direct Export Option">
+	
+	   <t>IOAM Direct Export (DEX) Option Type 
+	   described in <xref target="RFC9326" /> can be used instead of the IOAM trace type. IOAM DEX only needs to encapsulate
+       a fix-size instruction header in the HbH option header. </t>
+	   
+	   <t>Figure 4 shows the HbH option format for IOAM DEX type fields. The field specification is identical to that in <xref target="RFC8200" /> and 
+	  <xref target="RFC9326" />. </t>
+	  
+ <t><figure anchor="figure_4" title="HbH Option Format for IOAM DEX Type Fields">
+            <artwork><![CDATA[	  
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|  Option Type  |  Opt Data Len |   Reserved    |   IOAM Type   |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+<------
+|        Namespace-ID           |   Flags       |Extension-Flags|   
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ IOAM 
+|               IOAM-Trace-Type                 |  Reserved     | DEX
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ Type
+|                         Flow ID (optional)                    | Fields
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                     Sequence Number  (Optional)               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+<------
+]]></artwork>
+</figure></t>
+	     
+	
+	</section>
+	  
+	<section title="Comparison">
+
+<t>The following table compares the existing approach and the four other alternative approaches proposed in this draft. </t>
+	
+<t><figure anchor="figure_5" title="Comparison of Different Approaches">
+            <artwork><![CDATA[
+ +--------------+-------------------------+--------------------------+ 
+ |  Approach    |   Pros                  |   Cons                   |  
+ |              |                         |                          |  
+ +--------------+-------------------------+--------------------------+ 
+ |IOAM Trace    |Comply w/ IOAM Data Spec |Variable, long HbH        |  
+ |Option        |                         |header impedes access of  |
+ |in HbH        |                         |other extension headers   |
+ +--------------+-------------------------+--------------------------+     	  
+ |IOAM Trace    |Fix-size and short HbH   |Need extra extension      |
+ |Data Separate |header, good for         |header option to hold     |
+ |and Postpose  |accessing other extension|trace data                |
+ |(Sec. 2)      |headers                  |                          |
+ +--------------+-------------------------+--------------------------+ 
+ |Segment IOAM  |Fix-size and controllable|Need to update IOAM trace |
+ |Data Export   |HbH header size          |type data field spec.     | 
+ |(Sec. 3.1)    |                         |                          |
+ +--------------+-------------------------+--------------------------+ 
+ |Trace Export  |Can be done through      |Specific to SRv6;         |
+ |at SRv6 nodes |configuration            |No better than IOAM       | 
+ |(Sec. 3.2)    |                         |DEX in the worst case     |  
+ +--------------+-------------------------+--------------------------+ 
+ |IOAM Direct   |Comply w/ IOAM DEX Spec; |Need export data          |
+ |Export in HbH |Fix-size and short HbH   |correlation, and other    | 
+ |(Sec. 4)      |                         |issues of DEX             |
+ +--------------+-------------------------+--------------------------+ 
+]]></artwork>
+	  </figure></t>
+	
+    </section>
+
+    <section anchor="Security" title="Security Considerations">
+      <t>No new security issue is identified other than those for IOAM trace option <xref target="RFC9197"/>, 
+	  IOAM DEX <xref target="RFC9326"/>, and IPv6 extension headers <xref target="RFC8200"/>.</t>
+    </section>
+
+    <section anchor="IANA" title = "IANA Considerations" >
+      <t>This document requires no IANA actions.</t>
+    </section>
+	
+	<section anchor="Acknowledgments" title ="Acknowledgments">
+	  <t></t>
+    </section>
+
+  </middle>
+
+  <back>
+    <references title="Normative References">
+      <?rfc include="reference.RFC.2119"?>
+
+      <?rfc include='reference.RFC.8300'?>
+
+      <?rfc include='reference.RFC.8200'?>
+	  
+	  <?rfc include='reference.RFC.9197'?>
+	  
+	  <?rfc include='reference.RFC.9486'?>
+	  
+	  <?rfc include='reference.RFC.8754'?>
+	  
+	  <?rfc include='reference.RFC.9259'?>
+	  
+	  <?rfc include='reference.RFC.9326'?>
+	  
+	  <?rfc include='reference.I-D.song-ippm-segment-ioam'?>
+	  
+	  <?rfc include='reference.I-D.song-ippm-ioam-tunnel-mode'?>
+	  
+	  <?rfc include='reference.I-D.ali-spring-ioam-srv6'?>
+	  
+    </references>
+
+  </back>
+</rfc>
